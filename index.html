@@ -5,29 +5,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>الواجب البيتي الأول</title>
     
-    <!-- تحميل مكتبة التصميم (Tailwind) -->
+    <!-- مكتبة التصميم -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- تحميل مكتبات React -->
+    <!-- مكتبات React -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     
-    <!-- تحميل المترجم (Babel) ليقرأ الكود داخل المتصفح -->
+    <!-- المترجم ليعمل الكود في المتصفح -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
 <body class="bg-gray-50 font-sans">
     <div id="root"></div>
 
-    <!-- كود التطبيق -->
     <script type="text/babel">
         const { useState, useEffect } = React;
 
         // ==========================================
-        // ضعي رابط Google Apps Script الخاص بك هنا
-        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz5E2lmNbp02_OYPRejujerni6weONXA4v2yxZSGjQwSSgE_4DtLQO9_8M8UOkE6XXsSg/exec";
+        // 🔴 ضعي رابط Google Apps Script الجديد هنا بين علامتي التنصيص
+        // ==========================================
+        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz7mf_Nb_hOwlyvK5AyMiPxN5Xw3LmimB17Ief4RxCkHJgUdVwVoWkTjfazLiehiT3Q0g/exec";
+        
         // ==========================================
 
-        // دوال الرياضيات (توليد الأرقام والمعادلات)
         const getRandomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 
         const getDeterminant = (matrix) => {
@@ -43,14 +43,11 @@
         };
 
         const generateSystem = () => {
-            let det = 0;
-            let A = [];
+            let det = 0; let A = [];
             while (det === 0) {
-                A = [
-                    [getRandomInt(-4, 4), getRandomInt(-4, 4), getRandomInt(-4, 4)],
-                    [getRandomInt(-4, 4), getRandomInt(-4, 4), getRandomInt(-4, 4)],
-                    [getRandomInt(-4, 4), getRandomInt(-4, 4), getRandomInt(-4, 4)]
-                ];
+                A = [[getRandomInt(-4, 4), getRandomInt(-4, 4), getRandomInt(-4, 4)],
+                     [getRandomInt(-4, 4), getRandomInt(-4, 4), getRandomInt(-4, 4)],
+                     [getRandomInt(-4, 4), getRandomInt(-4, 4), getRandomInt(-4, 4)]];
                 det = getDeterminant(A);
             }
             const X = [getRandomInt(-4, 4), getRandomInt(-4, 4), getRandomInt(-4, 4)];
@@ -63,8 +60,7 @@
         };
 
         const generateMatrix5x5 = () => {
-            let matrix = [];
-            let det = 0;
+            let matrix = []; let det = 0;
             while (det === 0) {
                 matrix = Array.from({ length: 5 }, () => Array.from({ length: 5 }, () => getRandomInt(-4, 4)));
                 det = getDeterminant(matrix);
@@ -99,7 +95,7 @@
                 img.src = event.target.result;
                 img.onload = () => {
                     const canvas = document.createElement('canvas');
-                    const MAX_WIDTH = 500; 
+                    const MAX_WIDTH = 400; 
                     const scaleSize = MAX_WIDTH / img.width;
                     canvas.width = MAX_WIDTH;
                     canvas.height = img.height * scaleSize;
@@ -116,29 +112,13 @@
             const [questions, setQuestions] = useState([]);
             const [currentQIndex, setCurrentQIndex] = useState(0);
             const [answers, setAnswers] = useState({});
-            const [grades, setGrades] = useState([]);
             const [errorMsg, setErrorMsg] = useState('');
             const [isSubmitting, setIsSubmitting] = useState(false);
-            const [isLoadingGrades, setIsLoadingGrades] = useState(false);
-
-            const fetchGrades = async () => {
-                if (GOOGLE_SCRIPT_URL === "ضع_رابط_سكربت_جوجل_هنا") return;
-                setIsLoadingGrades(true);
-                try {
-                    const response = await fetch(GOOGLE_SCRIPT_URL);
-                    const data = await response.json();
-                    setGrades(data.reverse());
-                } catch (e) {
-                    console.error(e);
-                } finally {
-                    setIsLoadingGrades(false);
-                }
-            };
 
             const handleStart = (e) => {
                 e.preventDefault();
-                if (GOOGLE_SCRIPT_URL === "ضع_رابط_سكربت_جوجل_هنا") {
-                    setErrorMsg('خطأ: لم يتم إضافة رابط Google Apps Script في الكود.');
+                if (GOOGLE_SCRIPT_URL === "ضع_رابط_سكربت_جوجل_الجديد_هنا" || !GOOGLE_SCRIPT_URL.startsWith("https://script.google.com")) {
+                    setErrorMsg('خطأ: لم يتم وضع رابط جوجل السكربت الصحيح في الكود.');
                     return;
                 }
                 const sName = studentInfo.name.trim();
@@ -147,7 +127,7 @@
                     return;
                 }
                 if (localStorage.getItem(`hw1_${sName}_${studentInfo.studyType}`)) {
-                    setErrorMsg('لقد قمت بتسليم الواجب مسبقاً. لا يُسمح بإعادة المحاولة.');
+                    setErrorMsg('لقد قمت بتسليم الواجب مسبقاً.');
                     return;
                 }
                 setErrorMsg('');
@@ -178,7 +158,7 @@
 
             const validateCurrentQuestion = () => {
                 const ans = answers[currentQIndex];
-                if (!ans || !ans.image) { setErrorMsg('يجب إرفاق صورة الحل اليدوي قبل الانتقال.'); return false; }
+                if (!ans || !ans.image) { setErrorMsg('يجب إرفاق صورة الحل اليدوي.'); return false; }
                 const q = questions[currentQIndex];
                 if (q.type === 'system') {
                     if (!ans.x || !ans.y || !ans.z) { setErrorMsg('يجب إدخال جميع قيم x, y, z.'); return false; }
@@ -218,35 +198,26 @@
                         }),
                         headers: { 'Content-Type': 'text/plain;charset=utf-8' }
                     });
+                    
                     const result = await response.json();
                     if (result.status === 'success') {
                         localStorage.setItem(`hw1_${studentInfo.name.trim()}_${studentInfo.studyType}`, 'true');
                         setView('success');
-                    } else throw new Error(result.message);
+                    } else {
+                        throw new Error(result.message);
+                    }
                 } catch (e) {
-                    setErrorMsg('حدث خطأ أثناء الإرسال. تأكد من اتصالك بالإنترنت.');
+                    console.error(e);
+                    setErrorMsg('خطأ في الإرسال: تأكد من صلاحيات جوجل (Anyone) ومن اتصالك بالإنترنت.');
                 } finally {
                     setIsSubmitting(false);
                 }
             };
 
-            const exportToCSV = () => {
-                const headers = ['الاسم', 'الدراسة', 'س1-أ', 'درجة', 'س1-ب', 'درجة', 'س1-ج', 'درجة', 'س2', 'درجة', 'النتيجة', 'التاريخ', 'الصورة'];
-                const rows = grades.map(g => [
-                    g.name, g.studyType, g.studentAnswers?.[0], g.scores[0], g.studentAnswers?.[1], g.scores[1],
-                    g.studentAnswers?.[2], g.scores[2], g.studentAnswers?.[3], g.scores[3], g.totalScore, `"${g.date}"`, g.imageUrl
-                ]);
-                let csvContent = "data:text/csv;charset=utf-8,\uFEFF" + headers.join(",") + "\n" + rows.map(e => e.join(",")).join("\n");
-                const link = document.createElement("a");
-                link.setAttribute("href", encodeURI(csvContent));
-                link.setAttribute("download", "grades.csv");
-                document.body.appendChild(link); link.click(); link.remove();
-            };
-
             if (view === 'login') {
                 return (
                     <div className="min-h-screen flex items-center justify-center p-4">
-                        <div className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full relative border-t-4 border-blue-600">
+                        <div className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full border-t-4 border-blue-600">
                             <div className="text-center mb-8">
                                 <h1 className="text-2xl font-bold text-gray-800 mb-2">الواجب البيتي الأول (1)</h1>
                                 <p className="text-gray-500">الرياضيات والتحليل العددي</p>
@@ -262,10 +233,9 @@
                                         <option value="صباحي">صباحي</option><option value="مسائي">مسائي</option>
                                     </select>
                                 </div>
-                                {errorMsg && <p className="text-red-600 bg-red-50 p-3 rounded-lg text-sm font-bold">{errorMsg}</p>}
+                                {errorMsg && <p className="text-red-600 bg-red-50 p-3 rounded-lg text-sm font-bold text-center">{errorMsg}</p>}
                                 <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg">بدء الواجب</button>
                             </form>
-                            <button onClick={() => { setView('teacher'); fetchGrades(); }} className="absolute bottom-2 left-2 text-gray-300 hover:text-gray-500" title="المعلم">🔒</button>
                         </div>
                     </div>
                 );
@@ -283,13 +253,13 @@
                             </div>
                             <div className="mb-6 bg-blue-50 p-6 rounded-lg border">
                                 <p className="text-lg font-bold text-blue-700 mb-4" dir="ltr">{q.method}</p>
-                                <div className="flex flex-col items-center justify-center text-xl font-mono" dir="ltr">
+                                <div className="flex flex-col items-center justify-center text-xl font-mono overflow-x-auto" dir="ltr">
                                     {q.type === 'system' ? (
-                                        <>{q.A.map((row, i) => <p key={i}>{formatEq(row[0], row[1], row[2], q.B[i])}</p>)}</>
+                                        <>{q.A.map((row, i) => <p key={i} className="whitespace-nowrap">{formatEq(row[0], row[1], row[2], q.B[i])}</p>)}</>
                                     ) : (
-                                        <div className="flex items-center text-xl">
+                                        <div className="flex items-center text-lg md:text-xl">
                                             <span className="text-4xl font-light">|</span>
-                                            <div className="grid grid-cols-5 gap-4 text-center mx-2">{q.A.map(r => r.map((v, i) => <span key={i}>{v}</span>))}</div>
+                                            <div className="grid grid-cols-5 gap-3 text-center mx-2">{q.A.map(r => r.map((v, i) => <span key={i} className="w-6">{v}</span>))}</div>
                                             <span className="text-4xl font-light">|</span>
                                         </div>
                                     )}
@@ -300,10 +270,10 @@
                                 <div className="bg-gray-50 p-4 rounded-lg border">
                                     <h4 className="font-bold mb-3">النواتج النهائية:</h4>
                                     {q.type === 'system' ? (
-                                        <div className="grid grid-cols-3 gap-4" dir="ltr">
-                                            <input type="number" placeholder="x =" className="p-2 border rounded" value={ans.x||''} onChange={e=>handleAnswerChange('x', e.target.value)} />
-                                            <input type="number" placeholder="y =" className="p-2 border rounded" value={ans.y||''} onChange={e=>handleAnswerChange('y', e.target.value)} />
-                                            <input type="number" placeholder="z =" className="p-2 border rounded" value={ans.z||''} onChange={e=>handleAnswerChange('z', e.target.value)} />
+                                        <div className="grid grid-cols-3 gap-2" dir="ltr">
+                                            <input type="number" placeholder="x =" className="p-2 border rounded w-full" value={ans.x||''} onChange={e=>handleAnswerChange('x', e.target.value)} />
+                                            <input type="number" placeholder="y =" className="p-2 border rounded w-full" value={ans.y||''} onChange={e=>handleAnswerChange('y', e.target.value)} />
+                                            <input type="number" placeholder="z =" className="p-2 border rounded w-full" value={ans.z||''} onChange={e=>handleAnswerChange('z', e.target.value)} />
                                         </div>
                                     ) : (
                                         <input type="number" placeholder="قيمة المحدد =" className="p-2 border rounded w-full text-center" value={ans.det||''} onChange={e=>handleAnswerChange('det', e.target.value)} dir="ltr"/>
@@ -339,44 +309,12 @@
                         <div className="bg-white rounded-xl shadow-lg p-10 max-w-md text-center border-t-4 border-green-500">
                             <div className="text-6xl mb-4">✅</div>
                             <h2 className="text-2xl font-bold mb-4">تم تسليم الواجب بنجاح</h2>
-                            <p className="text-gray-600">شكراً لك، تم حفظ الإجابات.</p>
+                            <p className="text-gray-600">شكراً لك، تم حفظ إجاباتك عند المعلم.</p>
                         </div>
                     </div>
                 );
             }
 
-            if (view === 'teacher') {
-                return (
-                    <div className="min-h-screen bg-gray-100 p-4 md:p-8">
-                        <div className="max-w-7xl mx-auto">
-                            <div className="flex justify-between items-center mb-6">
-                                <h1 className="text-2xl font-bold">📊 سجل الدرجات</h1>
-                                <div className="space-x-2 space-x-reverse">
-                                    <button onClick={exportToCSV} className="bg-blue-600 text-white px-4 py-2 rounded font-bold">تحميل Excel</button>
-                                    <button onClick={()=>setView('login')} className="bg-gray-600 text-white px-4 py-2 rounded font-bold">رجوع</button>
-                                </div>
-                            </div>
-                            <div className="bg-white rounded-lg shadow overflow-x-auto">
-                                <table className="w-full text-right border-collapse">
-                                    <thead className="bg-gray-800 text-white">
-                                        <tr><th className="p-3">الاسم</th><th className="p-3">الدراسة</th><th className="p-3">النتيجة النهائية</th><th className="p-3">المرفق</th></tr>
-                                    </thead>
-                                    <tbody>
-                                        {isLoadingGrades ? <tr><td colSpan="4" className="p-4 text-center">جاري التحميل...</td></tr> : grades.map((g, i) => (
-                                            <tr key={i} className="border-b">
-                                                <td className="p-3 font-bold">{g.name}</td>
-                                                <td className="p-3">{g.studyType}</td>
-                                                <td className="p-3 font-black text-green-600 text-xl">{g.totalScore} / 10</td>
-                                                <td className="p-3">{g.imageUrl !== "لم يتم إرفاق صورة" ? <a href={g.imageUrl} target="_blank" className="text-blue-500">🔗 عرض الصورة</a> : '-'}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                );
-            }
             return null;
         }
 
