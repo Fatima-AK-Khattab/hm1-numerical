@@ -1,594 +1,387 @@
-﻿import React, { useState, useEffect } from 'react';
-import { Upload, CheckCircle, FileSpreadsheet, Lock, ArrowRight, ArrowLeft, User, Image as ImageIcon, Link as LinkIcon } from 'lucide-react';
-
-// === ضع الرابط الذي حصلت عليه من Google Apps Script هنا ===
-const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz5E2lmNbp02_OYPRejujerni6weONXA4v2yxZSGjQwSSgE_4DtLQO9_8M8UOkE6XXsSg/exec";
-
-// --- Math Helpers ---
-const getRandomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
-
-const getDeterminant = (matrix) => {
-  const n = matrix.length;
-  if (n === 1) return matrix[0][0];
-  if (n === 2) return matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0];
-  let det = 0;
-  for (let c = 0; c < n; c++) {
-    const subMatrix = matrix.slice(1).map(row => row.filter((_, j) => j !== c));
-    det += (c % 2 === 0 ? 1 : -1) * matrix[0][c] * getDeterminant(subMatrix);
-  }
-  return det;
-};
-
-const generateSystem = () => {
-  let det = 0;
-  let A = [];
-  while (det === 0) {
-    A = [
-      [getRandomInt(-4, 4), getRandomInt(-4, 4), getRandomInt(-4, 4)],
-      [getRandomInt(-4, 4), getRandomInt(-4, 4), getRandomInt(-4, 4)],
-      [getRandomInt(-4, 4), getRandomInt(-4, 4), getRandomInt(-4, 4)]
-    ];
-    det = getDeterminant(A);
-  }
-  const X = [getRandomInt(-4, 4), getRandomInt(-4, 4), getRandomInt(-4, 4)];
-  const B = [
-    A[0][0] * X[0] + A[0][1] * X[1] + A[0][2] * X[2],
-    A[1][0] * X[0] + A[1][1] * X[1] + A[1][2] * X[2],
-    A[2][0] * X[0] + A[2][1] * X[1] + A[2][2] * X[2]
-  ];
-  return { A, B, X, det };
-};
-
-const generateMatrix5x5 = () => {
-  let matrix = [];
-  let det = 0;
-  while (det === 0) {
-    matrix = Array.from({ length: 5 }, () =>
-      Array.from({ length: 5 }, () => getRandomInt(-4, 4))
-    );
-    det = getDeterminant(matrix);
-  }
-  return { A: matrix, det };
-};
-
-const formatTerm = (coeff, varName, isFirst) => {
-  if (coeff === 0) return "";
-  let sign = coeff > 0 ? (isFirst ? "" : "+ ") : "- ";
-  let absCoeff = Math.abs(coeff);
-  let numStr = absCoeff === 1 ? "" : absCoeff;
-  return `${sign}${numStr}${varName} `;
-};
-
-const formatEq = (a, b, c, rhs) => {
-  let terms = [];
-  if (a !== 0) terms.push(formatTerm(a, "x", terms.length === 0));
-  if (b !== 0) terms.push(formatTerm(b, "y", terms.length === 0));
-  if (c !== 0) terms.push(formatTerm(c, "z", terms.length === 0));
-  if (terms.length === 0) return `0 = ${rhs}`;
-  let eq = terms.join("").replace(/\s+/g, ' ').trim();
-  if (eq.startsWith("+ ")) eq = eq.substring(2);
-  return `${eq} = ${rhs}`;
-};
-
-// ضغط الصورة لتناسب الإرسال
-const compressImage = (file, callback) => {
-  const reader = new FileReader();
-  reader.readAsDataURL(file);
-  reader.onload = event => {
-    const img = new Image();
-    img.src = event.target.result;
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      const MAX_WIDTH = 500; 
-      const scaleSize = MAX_WIDTH / img.width;
-      canvas.width = MAX_WIDTH;
-      canvas.height = img.height * scaleSize;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.4);
-      callback(compressedDataUrl);
-    }
-  }
-};
-
-export default function App() {
-  const [view, setView] = useState('login');
-  const [studentInfo, setStudentInfo] = useState({ name: '', studyType: 'صباحي' });
-  const [questions, setQuestions] = useState([]);
-  const [currentQIndex, setCurrentQIndex] = useState(0);
-  const [answers, setAnswers] = useState({});
-  const [grades, setGrades] = useState([]);
-  const [errorMsg, setErrorMsg] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isLoadingGrades, setIsLoadingGrades] = useState(false);
-
-  // جلب البيانات من Google Sheets
-  const fetchGrades = async () => {
-    if (GOOGLE_SCRIPT_URL === "ضع_رابط_سكربت_جوجل_هنا") return;
-    setIsLoadingGrades(true);
-    try {
-      const response = await fetch(GOOGLE_SCRIPT_URL);
-      const data = await response.json();
-      setGrades(data.reverse()); // الأحدث أولاً
-    } catch (e) {
-      console.error("Error fetching data:", e);
-    } finally {
-      setIsLoadingGrades(false);
-    }
-  };
-
-  const handleStart = (e) => {
-    e.preventDefault();
-    if (GOOGLE_SCRIPT_URL === "ضع_رابط_سكربت_جوجل_هنا") {
-      setErrorMsg('خطأ: لم يتم إضافة رابط Google Apps Script في الكود للمزامنة مع ملف الدرجات.');
-      return;
-    }
-
-    const sName = studentInfo.name.trim();
-    if (sName.split(' ').length < 2) {
-      setErrorMsg('يرجى إدخال الاسم الثلاثي بشكل صحيح.');
-      return;
-    }
-
-    const hasSubmittedLocal = localStorage.getItem(`hw1_${sName}_${studentInfo.studyType}`);
-    if (hasSubmittedLocal) {
-      setErrorMsg('لقد قمت بتسليم الواجب مسبقاً. لا يُسمح بإعادة المحاولة.');
-      return;
-    }
-
-    setErrorMsg('');
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>الواجب البيتي الأول</title>
     
-    const q1 = { ...generateSystem(), type: 'system', title: 'السؤال الأول (أ)', method: 'Cramer Rule (قاعدة كرامر)' };
-    const q2 = { ...generateSystem(), type: 'system', title: 'السؤال الأول (ب)', method: 'Gauss Elimination (طريقة جاوس)' };
-    const q3 = { ...generateSystem(), type: 'system', title: 'السؤال الأول (ج)', method: 'Inverse Matrix (المصفوفة العكسية)' };
-    const q4 = { ...generateMatrix5x5(), type: 'det5x5', title: 'السؤال الثاني', method: 'Reduction Formula (صيغة الاختزال لحساب المحدد)' };
+    <!-- تحميل مكتبة التصميم (Tailwind) -->
+    <script src="https://cdn.tailwindcss.com"></script>
     
-    setQuestions([q1, q2, q3, q4]);
-    setAnswers({});
-    setCurrentQIndex(0);
-    setView('quiz');
-  };
-
-  const handleAnswerChange = (field, value) => {
-    setAnswers(prev => ({
-      ...prev,
-      [currentQIndex]: { ...prev[currentQIndex], [field]: value }
-    }));
-  };
-
-  const handleFileUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      compressImage(file, (base64Str) => {
-        handleAnswerChange('image', base64Str);
-        handleAnswerChange('fileName', file.name);
-      });
-    }
-  };
-
-  const validateCurrentQuestion = () => {
-    const ans = answers[currentQIndex];
-    if (!ans || !ans.image) {
-      setErrorMsg('يجب إرفاق صورة الحل اليدوي قبل الانتقال.');
-      return false;
-    }
-    const q = questions[currentQIndex];
-    if (q.type === 'system') {
-      if (!ans.x || !ans.y || !ans.z) {
-        setErrorMsg('يجب إدخال قيم x, y, z النهائية.');
-        return false;
-      }
-    } else {
-      if (!ans.det) {
-        setErrorMsg('يجب إدخال قيمة المحدد النهائية.');
-        return false;
-      }
-    }
-    setErrorMsg('');
-    return true;
-  };
-
-  const handleNext = () => {
-    if (validateCurrentQuestion()) setCurrentQIndex(prev => prev + 1);
-  };
-
-  const handlePrev = () => {
-    setErrorMsg('');
-    setCurrentQIndex(prev => prev - 1);
-  };
-
-  const handleSubmit = async () => {
-    if (!validateCurrentQuestion()) return;
-    setIsSubmitting(true);
+    <!-- تحميل مكتبات React -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     
-    let totalScore = 0;
-    const scores = [];
-    const studentAnswers = [];
-    
-    // نأخذ صورة واحدة لإرسالها
-    let finalImageBase64 = answers[0]?.image || ''; 
+    <!-- تحميل المترجم (Babel) ليقرأ الكود داخل المتصفح -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-gray-50 font-sans">
+    <div id="root"></div>
 
-    questions.forEach((q, idx) => {
-      const ans = answers[idx];
-      let score = 0;
-      let submittedAnswer = "";
-      
-      if (q.type === 'system') {
-        submittedAnswer = `x=${ans.x}, y=${ans.y}, z=${ans.z}`;
-        if (parseInt(ans.x) === q.X[0] && parseInt(ans.y) === q.X[1] && parseInt(ans.z) === q.X[2]) {
-          score = 2.5;
+    <!-- كود التطبيق -->
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // ==========================================
+        // ضعي رابط Google Apps Script الخاص بك هنا
+        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz5E2lmNbp02_OYPRejujerni6weONXA4v2yxZSGjQwSSgE_4DtLQO9_8M8UOkE6XXsSg/exec";
+        // ==========================================
+
+        // دوال الرياضيات (توليد الأرقام والمعادلات)
+        const getRandomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+
+        const getDeterminant = (matrix) => {
+            const n = matrix.length;
+            if (n === 1) return matrix[0][0];
+            if (n === 2) return matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0];
+            let det = 0;
+            for (let c = 0; c < n; c++) {
+                const subMatrix = matrix.slice(1).map(row => row.filter((_, j) => j !== c));
+                det += (c % 2 === 0 ? 1 : -1) * matrix[0][c] * getDeterminant(subMatrix);
+            }
+            return det;
+        };
+
+        const generateSystem = () => {
+            let det = 0;
+            let A = [];
+            while (det === 0) {
+                A = [
+                    [getRandomInt(-4, 4), getRandomInt(-4, 4), getRandomInt(-4, 4)],
+                    [getRandomInt(-4, 4), getRandomInt(-4, 4), getRandomInt(-4, 4)],
+                    [getRandomInt(-4, 4), getRandomInt(-4, 4), getRandomInt(-4, 4)]
+                ];
+                det = getDeterminant(A);
+            }
+            const X = [getRandomInt(-4, 4), getRandomInt(-4, 4), getRandomInt(-4, 4)];
+            const B = [
+                A[0][0] * X[0] + A[0][1] * X[1] + A[0][2] * X[2],
+                A[1][0] * X[0] + A[1][1] * X[1] + A[1][2] * X[2],
+                A[2][0] * X[0] + A[2][1] * X[1] + A[2][2] * X[2]
+            ];
+            return { A, B, X, det };
+        };
+
+        const generateMatrix5x5 = () => {
+            let matrix = [];
+            let det = 0;
+            while (det === 0) {
+                matrix = Array.from({ length: 5 }, () => Array.from({ length: 5 }, () => getRandomInt(-4, 4)));
+                det = getDeterminant(matrix);
+            }
+            return { A: matrix, det };
+        };
+
+        const formatTerm = (coeff, varName, isFirst) => {
+            if (coeff === 0) return "";
+            let sign = coeff > 0 ? (isFirst ? "" : "+ ") : "- ";
+            let absCoeff = Math.abs(coeff);
+            let numStr = absCoeff === 1 ? "" : absCoeff;
+            return `${sign}${numStr}${varName} `;
+        };
+
+        const formatEq = (a, b, c, rhs) => {
+            let terms = [];
+            if (a !== 0) terms.push(formatTerm(a, "x", terms.length === 0));
+            if (b !== 0) terms.push(formatTerm(b, "y", terms.length === 0));
+            if (c !== 0) terms.push(formatTerm(c, "z", terms.length === 0));
+            if (terms.length === 0) return `0 = ${rhs}`;
+            let eq = terms.join("").replace(/\s+/g, ' ').trim();
+            if (eq.startsWith("+ ")) eq = eq.substring(2);
+            return `${eq} = ${rhs}`;
+        };
+
+        const compressImage = (file, callback) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = event => {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 500; 
+                    const scaleSize = MAX_WIDTH / img.width;
+                    canvas.width = MAX_WIDTH;
+                    canvas.height = img.height * scaleSize;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    callback(canvas.toDataURL('image/jpeg', 0.4));
+                }
+            }
+        };
+
+        function App() {
+            const [view, setView] = useState('login');
+            const [studentInfo, setStudentInfo] = useState({ name: '', studyType: 'صباحي' });
+            const [questions, setQuestions] = useState([]);
+            const [currentQIndex, setCurrentQIndex] = useState(0);
+            const [answers, setAnswers] = useState({});
+            const [grades, setGrades] = useState([]);
+            const [errorMsg, setErrorMsg] = useState('');
+            const [isSubmitting, setIsSubmitting] = useState(false);
+            const [isLoadingGrades, setIsLoadingGrades] = useState(false);
+
+            const fetchGrades = async () => {
+                if (GOOGLE_SCRIPT_URL === "ضع_رابط_سكربت_جوجل_هنا") return;
+                setIsLoadingGrades(true);
+                try {
+                    const response = await fetch(GOOGLE_SCRIPT_URL);
+                    const data = await response.json();
+                    setGrades(data.reverse());
+                } catch (e) {
+                    console.error(e);
+                } finally {
+                    setIsLoadingGrades(false);
+                }
+            };
+
+            const handleStart = (e) => {
+                e.preventDefault();
+                if (GOOGLE_SCRIPT_URL === "ضع_رابط_سكربت_جوجل_هنا") {
+                    setErrorMsg('خطأ: لم يتم إضافة رابط Google Apps Script في الكود.');
+                    return;
+                }
+                const sName = studentInfo.name.trim();
+                if (sName.split(' ').length < 2) {
+                    setErrorMsg('يرجى إدخال الاسم الثلاثي بشكل صحيح.');
+                    return;
+                }
+                if (localStorage.getItem(`hw1_${sName}_${studentInfo.studyType}`)) {
+                    setErrorMsg('لقد قمت بتسليم الواجب مسبقاً. لا يُسمح بإعادة المحاولة.');
+                    return;
+                }
+                setErrorMsg('');
+                setQuestions([
+                    { ...generateSystem(), type: 'system', title: 'السؤال الأول (أ)', method: 'Cramer Rule' },
+                    { ...generateSystem(), type: 'system', title: 'السؤال الأول (ب)', method: 'Gauss Elimination' },
+                    { ...generateSystem(), type: 'system', title: 'السؤال الأول (ج)', method: 'Inverse Matrix' },
+                    { ...generateMatrix5x5(), type: 'det5x5', title: 'السؤال الثاني', method: 'Reduction Formula' }
+                ]);
+                setAnswers({});
+                setCurrentQIndex(0);
+                setView('quiz');
+            };
+
+            const handleAnswerChange = (field, value) => {
+                setAnswers(prev => ({ ...prev, [currentQIndex]: { ...prev[currentQIndex], [field]: value } }));
+            };
+
+            const handleFileUpload = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    compressImage(file, (base64Str) => {
+                        handleAnswerChange('image', base64Str);
+                        handleAnswerChange('fileName', file.name);
+                    });
+                }
+            };
+
+            const validateCurrentQuestion = () => {
+                const ans = answers[currentQIndex];
+                if (!ans || !ans.image) { setErrorMsg('يجب إرفاق صورة الحل اليدوي قبل الانتقال.'); return false; }
+                const q = questions[currentQIndex];
+                if (q.type === 'system') {
+                    if (!ans.x || !ans.y || !ans.z) { setErrorMsg('يجب إدخال جميع قيم x, y, z.'); return false; }
+                } else {
+                    if (!ans.det) { setErrorMsg('يجب إدخال قيمة المحدد.'); return false; }
+                }
+                setErrorMsg('');
+                return true;
+            };
+
+            const handleSubmit = async () => {
+                if (!validateCurrentQuestion()) return;
+                setIsSubmitting(true);
+                let totalScore = 0; const scores = []; const studentAnswers = [];
+                let finalImageBase64 = answers[0]?.image || ''; 
+
+                questions.forEach((q, idx) => {
+                    const ans = answers[idx];
+                    let score = 0; let submittedAnswer = "";
+                    if (q.type === 'system') {
+                        submittedAnswer = `x=${ans.x}, y=${ans.y}, z=${ans.z}`;
+                        if (parseInt(ans.x) === q.X[0] && parseInt(ans.y) === q.X[1] && parseInt(ans.z) === q.X[2]) score = 2.5;
+                    } else {
+                        submittedAnswer = `det=${ans.det}`;
+                        if (parseInt(ans.det) === q.det) score = 2.5;
+                    }
+                    totalScore += score; scores.push(score); studentAnswers.push(submittedAnswer);
+                });
+
+                try {
+                    const response = await fetch(GOOGLE_SCRIPT_URL, {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            name: studentInfo.name, studyType: studentInfo.studyType,
+                            scores: scores, studentAnswers: studentAnswers, totalScore: totalScore,
+                            image: finalImageBase64, date: new Date().toLocaleString('en-US', { timeZone: 'Asia/Baghdad' })
+                        }),
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+                    });
+                    const result = await response.json();
+                    if (result.status === 'success') {
+                        localStorage.setItem(`hw1_${studentInfo.name.trim()}_${studentInfo.studyType}`, 'true');
+                        setView('success');
+                    } else throw new Error(result.message);
+                } catch (e) {
+                    setErrorMsg('حدث خطأ أثناء الإرسال. تأكد من اتصالك بالإنترنت.');
+                } finally {
+                    setIsSubmitting(false);
+                }
+            };
+
+            const exportToCSV = () => {
+                const headers = ['الاسم', 'الدراسة', 'س1-أ', 'درجة', 'س1-ب', 'درجة', 'س1-ج', 'درجة', 'س2', 'درجة', 'النتيجة', 'التاريخ', 'الصورة'];
+                const rows = grades.map(g => [
+                    g.name, g.studyType, g.studentAnswers?.[0], g.scores[0], g.studentAnswers?.[1], g.scores[1],
+                    g.studentAnswers?.[2], g.scores[2], g.studentAnswers?.[3], g.scores[3], g.totalScore, `"${g.date}"`, g.imageUrl
+                ]);
+                let csvContent = "data:text/csv;charset=utf-8,\uFEFF" + headers.join(",") + "\n" + rows.map(e => e.join(",")).join("\n");
+                const link = document.createElement("a");
+                link.setAttribute("href", encodeURI(csvContent));
+                link.setAttribute("download", "grades.csv");
+                document.body.appendChild(link); link.click(); link.remove();
+            };
+
+            if (view === 'login') {
+                return (
+                    <div className="min-h-screen flex items-center justify-center p-4">
+                        <div className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full relative border-t-4 border-blue-600">
+                            <div className="text-center mb-8">
+                                <h1 className="text-2xl font-bold text-gray-800 mb-2">الواجب البيتي الأول (1)</h1>
+                                <p className="text-gray-500">الرياضيات والتحليل العددي</p>
+                            </div>
+                            <form onSubmit={handleStart} className="space-y-6">
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-2">الاسم الثلاثي للطالب</label>
+                                    <input type="text" required placeholder="أدخل اسمك الكامل" className="w-full p-3 border rounded-lg" value={studentInfo.name} onChange={e => setStudentInfo({...studentInfo, name: e.target.value})} />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-2">نوع الدراسة</label>
+                                    <select className="w-full p-3 border rounded-lg" value={studentInfo.studyType} onChange={e => setStudentInfo({...studentInfo, studyType: e.target.value})}>
+                                        <option value="صباحي">صباحي</option><option value="مسائي">مسائي</option>
+                                    </select>
+                                </div>
+                                {errorMsg && <p className="text-red-600 bg-red-50 p-3 rounded-lg text-sm font-bold">{errorMsg}</p>}
+                                <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg">بدء الواجب</button>
+                            </form>
+                            <button onClick={() => { setView('teacher'); fetchGrades(); }} className="absolute bottom-2 left-2 text-gray-300 hover:text-gray-500" title="المعلم">🔒</button>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (view === 'quiz') {
+                const q = questions[currentQIndex];
+                const ans = answers[currentQIndex] || {};
+                return (
+                    <div className="min-h-screen flex items-center justify-center p-4 py-10">
+                        <div className="bg-white rounded-xl shadow-lg p-6 md:p-10 max-w-2xl w-full">
+                            <div className="flex justify-between items-center mb-6 border-b pb-4">
+                                <h2 className="text-xl font-bold text-gray-800">{q.title}</h2>
+                                <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-bold">سؤال {currentQIndex + 1} / 4</span>
+                            </div>
+                            <div className="mb-6 bg-blue-50 p-6 rounded-lg border">
+                                <p className="text-lg font-bold text-blue-700 mb-4" dir="ltr">{q.method}</p>
+                                <div className="flex flex-col items-center justify-center text-xl font-mono" dir="ltr">
+                                    {q.type === 'system' ? (
+                                        <>{q.A.map((row, i) => <p key={i}>{formatEq(row[0], row[1], row[2], q.B[i])}</p>)}</>
+                                    ) : (
+                                        <div className="flex items-center text-xl">
+                                            <span className="text-4xl font-light">|</span>
+                                            <div className="grid grid-cols-5 gap-4 text-center mx-2">{q.A.map(r => r.map((v, i) => <span key={i}>{v}</span>))}</div>
+                                            <span className="text-4xl font-light">|</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            
+                            <div className="space-y-4">
+                                <div className="bg-gray-50 p-4 rounded-lg border">
+                                    <h4 className="font-bold mb-3">النواتج النهائية:</h4>
+                                    {q.type === 'system' ? (
+                                        <div className="grid grid-cols-3 gap-4" dir="ltr">
+                                            <input type="number" placeholder="x =" className="p-2 border rounded" value={ans.x||''} onChange={e=>handleAnswerChange('x', e.target.value)} />
+                                            <input type="number" placeholder="y =" className="p-2 border rounded" value={ans.y||''} onChange={e=>handleAnswerChange('y', e.target.value)} />
+                                            <input type="number" placeholder="z =" className="p-2 border rounded" value={ans.z||''} onChange={e=>handleAnswerChange('z', e.target.value)} />
+                                        </div>
+                                    ) : (
+                                        <input type="number" placeholder="قيمة المحدد =" className="p-2 border rounded w-full text-center" value={ans.det||''} onChange={e=>handleAnswerChange('det', e.target.value)} dir="ltr"/>
+                                    )}
+                                </div>
+
+                                <div className="bg-white p-4 rounded-lg border-2 border-dashed border-gray-300 text-center">
+                                    <p className="font-bold text-gray-700 mb-2">إرفاق صورة الحل (إجباري)</p>
+                                    <input type="file" accept="image/*" className="hidden" id="fileUp" onChange={handleFileUpload} />
+                                    <label htmlFor="fileUp" className="cursor-pointer bg-blue-50 text-blue-700 px-4 py-2 rounded-lg inline-block font-bold">📸 اختر صورة</label>
+                                    {ans.fileName && <p className="mt-2 text-green-600 font-bold">✅ تم إرفاق الصورة</p>}
+                                </div>
+                            </div>
+
+                            {errorMsg && <div className="mt-4 p-3 bg-red-100 text-red-700 rounded font-bold text-center">{errorMsg}</div>}
+
+                            <div className="mt-6 flex justify-between">
+                                <button onClick={()=>{setErrorMsg(''); setCurrentQIndex(p=>p-1)}} disabled={currentQIndex===0 || isSubmitting} className="px-4 py-2 bg-gray-200 rounded font-bold">السابق</button>
+                                {currentQIndex < 3 ? (
+                                    <button onClick={()=>{if(validateCurrentQuestion()) setCurrentQIndex(p=>p+1)}} className="px-6 py-2 bg-blue-600 text-white rounded font-bold">التالي</button>
+                                ) : (
+                                    <button onClick={handleSubmit} disabled={isSubmitting} className="px-6 py-2 bg-green-600 text-white rounded font-bold">{isSubmitting ? 'جاري الإرسال...' : 'تسليم الواجب'}</button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (view === 'success') {
+                return (
+                    <div className="min-h-screen flex items-center justify-center p-4">
+                        <div className="bg-white rounded-xl shadow-lg p-10 max-w-md text-center border-t-4 border-green-500">
+                            <div className="text-6xl mb-4">✅</div>
+                            <h2 className="text-2xl font-bold mb-4">تم تسليم الواجب بنجاح</h2>
+                            <p className="text-gray-600">شكراً لك، تم حفظ الإجابات.</p>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (view === 'teacher') {
+                return (
+                    <div className="min-h-screen bg-gray-100 p-4 md:p-8">
+                        <div className="max-w-7xl mx-auto">
+                            <div className="flex justify-between items-center mb-6">
+                                <h1 className="text-2xl font-bold">📊 سجل الدرجات</h1>
+                                <div className="space-x-2 space-x-reverse">
+                                    <button onClick={exportToCSV} className="bg-blue-600 text-white px-4 py-2 rounded font-bold">تحميل Excel</button>
+                                    <button onClick={()=>setView('login')} className="bg-gray-600 text-white px-4 py-2 rounded font-bold">رجوع</button>
+                                </div>
+                            </div>
+                            <div className="bg-white rounded-lg shadow overflow-x-auto">
+                                <table className="w-full text-right border-collapse">
+                                    <thead className="bg-gray-800 text-white">
+                                        <tr><th className="p-3">الاسم</th><th className="p-3">الدراسة</th><th className="p-3">النتيجة النهائية</th><th className="p-3">المرفق</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        {isLoadingGrades ? <tr><td colSpan="4" className="p-4 text-center">جاري التحميل...</td></tr> : grades.map((g, i) => (
+                                            <tr key={i} className="border-b">
+                                                <td className="p-3 font-bold">{g.name}</td>
+                                                <td className="p-3">{g.studyType}</td>
+                                                <td className="p-3 font-black text-green-600 text-xl">{g.totalScore} / 10</td>
+                                                <td className="p-3">{g.imageUrl !== "لم يتم إرفاق صورة" ? <a href={g.imageUrl} target="_blank" className="text-blue-500">🔗 عرض الصورة</a> : '-'}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+            return null;
         }
-      } else {
-        submittedAnswer = `det=${ans.det}`;
-        if (parseInt(ans.det) === q.det) {
-          score = 2.5;
-        }
-      }
-      totalScore += score;
-      scores.push(score);
-      studentAnswers.push(submittedAnswer);
-    });
 
-    const payload = {
-      name: studentInfo.name,
-      studyType: studentInfo.studyType,
-      scores: scores,
-      studentAnswers: studentAnswers,
-      totalScore: totalScore, // الدرجة النهائية من 10
-      image: finalImageBase64,
-      date: new Date().toLocaleString('en-US', { timeZone: 'Asia/Baghdad' })
-    };
-
-    try {
-      const response = await fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        body: JSON.stringify(payload),
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' }
-      });
-      
-      const result = await response.json();
-      
-      if (result.status === 'success') {
-        localStorage.setItem(`hw1_${studentInfo.name.trim()}_${studentInfo.studyType}`, 'true');
-        setView('success');
-      } else {
-        throw new Error(result.message);
-      }
-    } catch (e) {
-      console.error("Error saving submission:", e);
-      setErrorMsg('حدث خطأ أثناء الإرسال لملف الدرجات. تأكد من اتصالك بالإنترنت.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // تصدير للـ Excel محلياً كخيار إضافي للمعلم
-  const exportToCSV = () => {
-    const headers = ['الاسم', 'الدراسة', 'إجابة س1-أ', 'درجة س1-أ', 'إجابة س1-ب', 'درجة س1-ب', 'إجابة س1-ج', 'درجة س1-ج', 'إجابة س2', 'درجة س2', 'الدرجة النهائية', 'التاريخ', 'رابط الصورة المرفقة'];
-    const rows = grades.map(g => [
-      g.name,
-      g.studyType,
-      g.studentAnswers?.[0] || '-', g.scores[0],
-      g.studentAnswers?.[1] || '-', g.scores[1],
-      g.studentAnswers?.[2] || '-', g.scores[2],
-      g.studentAnswers?.[3] || '-', g.scores[3],
-      g.totalScore, // الدرجة النهائية هنا
-      `"${g.date}"`,
-      g.imageUrl
-    ]);
-
-    let csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
-      + headers.join(",") + "\n" 
-      + rows.map(e => e.join(",")).join("\n");
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "grades_export.csv");
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-  };
-
-  // --- Views ---
-
-  if (view === 'login') {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4" dir="rtl">
-        <div className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full relative border-t-4 border-blue-600">
-          <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-gray-800 mb-2">الواجب البيتي الأول (1)</h1>
-            <p className="text-gray-500">الرياضيات والتحليل العددي</p>
-          </div>
-          
-          <form onSubmit={handleStart} className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">الاسم الثلاثي للطالب</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                  <User className="h-5 w-5 text-gray-400" />
-                </div>
-                <input 
-                  type="text" 
-                  required
-                  placeholder="أدخل اسمك الكامل باللغة العربية"
-                  className="block w-full pl-3 pr-10 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                  value={studentInfo.name}
-                  onChange={(e) => setStudentInfo({...studentInfo, name: e.target.value})}
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">نوع الدراسة</label>
-              <select 
-                className="block w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                value={studentInfo.studyType}
-                onChange={(e) => setStudentInfo({...studentInfo, studyType: e.target.value})}
-              >
-                <option value="صباحي">دراسة صباحية</option>
-                <option value="مسائي">دراسة مسائية</option>
-              </select>
-            </div>
-
-            {errorMsg && <p className="text-red-600 bg-red-50 p-3 rounded-lg text-sm font-bold border border-red-200">{errorMsg}</p>}
-
-            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-md">
-              بدء الواجب
-            </button>
-          </form>
-
-          {/* Secret Teacher Area Toggle */}
-          <button 
-            onClick={() => { setView('teacher'); fetchGrades(); }} 
-            className="absolute bottom-2 left-2 text-gray-300 hover:text-gray-500 transition"
-            title="ملف الدرجات"
-          >
-            <Lock className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (view === 'quiz') {
-    const q = questions[currentQIndex];
-    const ans = answers[currentQIndex] || {};
-
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4 py-10" dir="rtl">
-        <div className="bg-white rounded-xl shadow-lg p-6 md:p-10 max-w-2xl w-full">
-          <div className="flex justify-between items-center mb-8 border-b pb-4">
-            <div>
-              <h2 className="text-xl font-bold text-gray-800">{q.title}</h2>
-              <p className="text-sm text-blue-600 font-medium mt-1">الطالب: {studentInfo.name}</p>
-            </div>
-            <div className="text-gray-500 font-medium bg-gray-100 px-3 py-1 rounded-full text-sm">
-              سؤال {currentQIndex + 1} من {questions.length}
-            </div>
-          </div>
-
-          <div className="mb-8 bg-blue-50 p-6 rounded-lg border border-blue-100">
-            <h3 className="font-bold text-gray-800 mb-3">حل {q.type === 'system' ? 'نظام المعادلات' : 'مصفوفة (5x5)'} التالي باستخدام:</h3>
-            <p className="text-lg font-semibold text-blue-700 mb-6" dir="ltr">{q.method}</p>
-            
-            <div className="flex flex-col items-center justify-center space-y-2 text-xl font-mono overflow-x-auto" dir="ltr">
-              {q.type === 'system' ? (
-                <>
-                  <p className="whitespace-nowrap">{formatEq(q.A[0][0], q.A[0][1], q.A[0][2], q.B[0])}</p>
-                  <p className="whitespace-nowrap">{formatEq(q.A[1][0], q.A[1][1], q.A[1][2], q.B[1])}</p>
-                  <p className="whitespace-nowrap">{formatEq(q.A[2][0], q.A[2][1], q.A[2][2], q.B[2])}</p>
-                </>
-              ) : (
-                <div className="flex items-center text-xl md:text-2xl min-w-max">
-                  <span className="text-4xl font-light">|</span>
-                  <div className="grid grid-cols-5 gap-x-4 md:gap-x-6 gap-y-2 text-center mx-2">
-                    {q.A.map((row, i) => 
-                      row.map((val, j) => <span key={`${i}-${j}`} className="w-8">{val}</span>)
-                    )}
-                  </div>
-                  <span className="text-4xl font-light">|</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="space-y-6">
-            <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
-              <h4 className="font-bold text-gray-800 mb-4">أدخل النواتج النهائية التي حصلت عليها:</h4>
-              {q.type === 'system' ? (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4" dir="ltr">
-                  <div className="flex items-center space-x-2 bg-white p-2 rounded-md border shadow-sm">
-                    <span className="font-bold text-lg text-blue-600">x =</span>
-                    <input type="number" className="w-full p-2 outline-none" value={ans.x || ''} onChange={e => handleAnswerChange('x', e.target.value)} />
-                  </div>
-                  <div className="flex items-center space-x-2 bg-white p-2 rounded-md border shadow-sm">
-                    <span className="font-bold text-lg text-green-600">y =</span>
-                    <input type="number" className="w-full p-2 outline-none" value={ans.y || ''} onChange={e => handleAnswerChange('y', e.target.value)} />
-                  </div>
-                  <div className="flex items-center space-x-2 bg-white p-2 rounded-md border shadow-sm">
-                    <span className="font-bold text-lg text-purple-600">z =</span>
-                    <input type="number" className="w-full p-2 outline-none" value={ans.z || ''} onChange={e => handleAnswerChange('z', e.target.value)} />
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center justify-center space-x-4 space-x-reverse bg-white p-4 rounded-md border shadow-sm max-w-sm mx-auto">
-                  <span className="font-bold text-lg text-gray-700">قيمة المحدد =</span>
-                  <input type="number" className="w-32 p-2 border-b-2 border-blue-500 outline-none text-center text-xl font-bold" value={ans.det || ''} onChange={e => handleAnswerChange('det', e.target.value)} dir="ltr" />
-                </div>
-              )}
-            </div>
-
-            <div className="bg-white p-6 rounded-lg border-2 border-dashed border-gray-300 hover:border-blue-500 transition-colors">
-              <div className="flex flex-col items-center justify-center">
-                <Upload className="w-10 h-10 text-gray-400 mb-3" />
-                <h4 className="font-bold text-gray-800 mb-1">إرفاق صورة الحل اليدوي (إجباري)</h4>
-                <p className="text-sm text-gray-500 mb-4">الرجاء تصوير ورقة الحل الخاصة بهذا السؤال</p>
-                
-                <input 
-                  type="file" 
-                  accept="image/*" 
-                  className="hidden" 
-                  id={`file-upload-${currentQIndex}`}
-                  onChange={handleFileUpload}
-                />
-                <label 
-                  htmlFor={`file-upload-${currentQIndex}`}
-                  className="cursor-pointer bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 font-semibold py-2 px-6 rounded-lg inline-flex items-center transition"
-                >
-                  <ImageIcon className="w-5 h-5 ml-2" />
-                  اختيار صورة
-                </label>
-                
-                {ans.fileName && (
-                  <p className="mt-3 text-sm font-medium text-green-600 flex items-center bg-green-50 px-3 py-1 rounded-full">
-                    <CheckCircle className="w-4 h-4 ml-1" />
-                    تم إرفاق: {ans.fileName}
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {errorMsg && (
-            <div className="mt-6 p-3 bg-red-50 text-red-700 rounded-lg text-sm font-bold border border-red-200 flex items-center">
-               <span className="mr-2">{errorMsg}</span>
-            </div>
-          )}
-
-          <div className="mt-8 flex justify-between items-center border-t pt-6">
-            <button 
-              onClick={handlePrev}
-              disabled={currentQIndex === 0 || isSubmitting}
-              className={`flex items-center px-5 py-2.5 rounded-lg font-bold transition-all ${currentQIndex === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'}`}
-            >
-              <ArrowRight className="w-5 h-5 ml-2" />
-              السابق
-            </button>
-            
-            {currentQIndex < questions.length - 1 ? (
-              <button 
-                onClick={handleNext}
-                className="flex items-center bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-bold transition-all shadow-sm"
-              >
-                التالي
-                <ArrowLeft className="w-5 h-5 mr-2" />
-              </button>
-            ) : (
-              <button 
-                onClick={handleSubmit}
-                disabled={isSubmitting}
-                className={`flex items-center px-8 py-2.5 rounded-lg font-bold transition-all shadow-lg text-white ${isSubmitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
-              >
-                <CheckCircle className="w-5 h-5 ml-2" />
-                {isSubmitting ? 'جاري الإرسال لملف الدرجات...' : 'تسليم الواجب النهائي'}
-              </button>
-            )}
-          </div>
-
-        </div>
-      </div>
-    );
-  }
-
-  if (view === 'success') {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4" dir="rtl">
-        <div className="bg-white rounded-xl shadow-lg p-10 max-w-md w-full text-center border-t-4 border-green-500">
-          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <CheckCircle className="w-10 h-10 text-green-600" />
-          </div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">شكرا لك</h2>
-          <p className="text-lg text-gray-600 mb-8">لقد تم تسليم الواجب بنجاح وتم تسجيل الدرجة النهائية في ملف الدرجات.</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (view === 'teacher') {
-    return (
-      <div className="min-h-screen bg-gray-100 p-4 md:p-8" dir="rtl">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-800 flex items-center">
-              <FileSpreadsheet className="w-8 h-8 ml-3 text-green-600" />
-              سجل الدرجات
-            </h1>
-            <div className="flex gap-4">
-              <button 
-                onClick={exportToCSV}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold transition flex items-center shadow-sm"
-              >
-                تحميل Excel مباشر
-              </button>
-              <button 
-                onClick={fetchGrades}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold transition shadow-sm"
-              >
-                {isLoadingGrades ? 'جاري التحديث...' : 'تحديث من جوجل'}
-              </button>
-              <button 
-                onClick={() => setView('login')}
-                className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-bold transition"
-              >
-                رجوع
-              </button>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200">
-            <div className="overflow-x-auto">
-              <table className="w-full text-right border-collapse text-sm md:text-base">
-                <thead>
-                  <tr className="bg-gray-800 text-white">
-                    <th className="p-4 border-b border-gray-700">الاسم</th>
-                    <th className="p-4 border-b border-gray-700">الدراسة</th>
-                    <th className="p-4 border-b border-gray-700">س1-أ</th>
-                    <th className="p-4 border-b border-gray-700">س1-ب</th>
-                    <th className="p-4 border-b border-gray-700">س1-ج</th>
-                    <th className="p-4 border-b border-gray-700">س2</th>
-                    <th className="p-4 border-b border-gray-700 text-yellow-300 text-lg font-bold">الدرجة النهائية</th>
-                    <th className="p-4 border-b border-gray-700">المرفقات</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {isLoadingGrades ? (
-                    <tr><td colSpan="8" className="p-8 text-center text-gray-500 font-bold">جاري جلب ملف الدرجات...</td></tr>
-                  ) : grades.length === 0 ? (
-                    <tr><td colSpan="8" className="p-8 text-center text-gray-500 font-medium">لا توجد درجات حتى الآن. تأكد من إضافة رابط جوجل السكربت.</td></tr>
-                  ) : (
-                    grades.map((g, idx) => (
-                      <tr key={idx} className="hover:bg-green-50 border-b transition-colors">
-                        <td className="p-4 font-bold text-gray-800">{g.name}</td>
-                        <td className="p-4 text-gray-600">{g.studyType}</td>
-                        <td className="p-4 font-bold">{g.scores[0]}</td>
-                        <td className="p-4 font-bold">{g.scores[1]}</td>
-                        <td className="p-4 font-bold">{g.scores[2]}</td>
-                        <td className="p-4 font-bold">{g.scores[3]}</td>
-                        <td className="p-4 font-black text-2xl text-green-700 bg-green-50/50">
-                          {g.totalScore} <span className="text-sm text-gray-500 font-normal">/ 10</span>
-                        </td>
-                        <td className="p-4">
-                          {g.imageUrl && g.imageUrl !== "لم يتم إرفاق صورة" ? (
-                            <a href={g.imageUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline flex items-center font-bold">
-                              <LinkIcon className="w-4 h-4 ml-1" /> فتح الصورة
-                            </a>
-                          ) : (
-                            <span className="text-gray-400 text-xs">لا يوجد</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return null;
-
-}
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
