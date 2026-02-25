@@ -24,7 +24,7 @@
         // ==========================================
         // 🔴 ضعي رابط Google Apps Script الخاص بكِ هنا بين علامتي التنصيص
         // ==========================================
-        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxIoFSKiDJo2qaOSQAoTr0yavpxpaEzckaFmxUnd0o_Su8dPCxfreYwYEF2JJIW2k3OAw/exec";
+        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyRzqe18GJ_w9grygBbioKZ_wNAOjznpC4bRZ6nscBkUgk6JvZndcCRo21DPHtjMx2CEQ/exec";
         
         // ==========================================
 
@@ -97,6 +97,13 @@
             const [errorMsg, setErrorMsg] = useState('');
             const [isSubmitting, setIsSubmitting] = useState(false);
 
+            // ميزة منع فتح الواجب إذا تم تسليمه مسبقاً بمجرد فتح الصفحة
+            useEffect(() => {
+                if (localStorage.getItem('hw1_submitted') === 'true') {
+                    setView('already_submitted');
+                }
+            }, []);
+
             const handleStart = (e) => {
                 e.preventDefault();
                 if (GOOGLE_SCRIPT_URL === "ضع_رابط_سكربت_جوجل_هنا" || !GOOGLE_SCRIPT_URL.startsWith("https://script.google.com")) {
@@ -108,10 +115,13 @@
                     setErrorMsg('يرجى إدخال الاسم الثلاثي بشكل صحيح.');
                     return;
                 }
+
+                // منع البدء إذا كان الطالب قد سلم الواجب مسبقاً بنفس الاسم من هذا المتصفح
                 if (localStorage.getItem(`hw1_${sName}_${studentInfo.studyType}`)) {
-                    setErrorMsg('لقد قمت بتسليم الواجب مسبقاً.');
+                    setErrorMsg('عذراً، لقد قمت بتسليم الواجب مسبقاً ولا يُسمح بالمحاولة مرة أخرى.');
                     return;
                 }
+
                 setErrorMsg('');
                 setQuestions([
                     { ...generateSystem(), type: 'system', title: 'السؤال الأول (أ)', method: 'Cramer Rule' },
@@ -140,7 +150,6 @@
                     reader.readAsDataURL(file);
                     reader.onload = event => {
                         const base64Str = event.target.result;
-                        // إذا كان الملف صورة، نقوم بضغطه، وإذا كان PDF نأخذه كما هو
                         if (file.type.startsWith('image/')) {
                             const img = new Image();
                             img.src = base64Str;
@@ -199,7 +208,6 @@
                         if (parseInt(ans.y) === q.X[1]) correctCount++;
                         if (parseInt(ans.z) === q.X[2]) correctCount++;
                         
-                        // تقسيم درجات المعادلات
                         if (correctCount === 1) score = 1;
                         else if (correctCount === 2) score = 2;
                         else if (correctCount === 3) score = 2.5;
@@ -210,7 +218,6 @@
                         let studentDet = parseInt(ans.det);
                         let actualDet = q.det;
 
-                        // تقسيم درجات المحدد 5x5
                         if (studentDet === actualDet) score = 2.5; 
                         else if (Math.abs(studentDet) === Math.abs(actualDet)) score = 2; 
                         else score = 1; 
@@ -235,18 +242,32 @@
                     
                     const result = await response.json();
                     if (result.status === 'success') {
+                        // حفظ في المتصفح لمنع الطالب من الدخول مرة أخرى نهائياً
                         localStorage.setItem(`hw1_${studentInfo.name.trim()}_${studentInfo.studyType}`, 'true');
+                        localStorage.setItem('hw1_submitted', 'true'); // قفل عام للمتصفح
                         setView('success');
                     } else {
                         throw new Error(result.message);
                     }
                 } catch (e) {
                     console.error(e);
-                    setErrorMsg('خطأ في الإرسال: قد يكون حجم الملف كبيراً جداً، أو يوجد مشكلة في الاتصال بالإنترنت.');
+                    setErrorMsg('خطأ في الإرسال: تأكد من اتصالك بالإنترنت وأن حجم الملف ليس كبيراً جداً.');
                 } finally {
                     setIsSubmitting(false);
                 }
             };
+
+            if (view === 'already_submitted') {
+                return (
+                    <div className="min-h-screen flex items-center justify-center p-4">
+                        <div className="bg-white rounded-xl shadow-lg p-10 max-w-md text-center border-t-4 border-red-500">
+                            <div className="text-6xl mb-4">🔒</div>
+                            <h2 className="text-2xl font-bold mb-4 text-red-600">غير مسموح</h2>
+                            <p className="text-gray-600">لقد قمت بتسليم هذا الواجب مسبقاً من هذا الجهاز. لا يُسمح بإعادة المحاولة.</p>
+                        </div>
+                    </div>
+                );
+            }
 
             if (view === 'login') {
                 return (
@@ -268,7 +289,9 @@
                                     </select>
                                 </div>
                                 {errorMsg && <p className="text-red-600 bg-red-50 p-3 rounded-lg text-sm font-bold text-center">{errorMsg}</p>}
-                                <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg">بدء الواجب</button>
+                                <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition">
+                                    بدء الواجب
+                                </button>
                             </form>
                         </div>
                     </div>
@@ -289,7 +312,15 @@
                             </div>
                             
                             <div className="mb-6 bg-blue-50 p-6 rounded-lg border">
-                                <p className="text-lg font-bold text-blue-700 mb-4" dir="ltr">{q.method}</p>
+                                {q.type === 'system' ? (
+                                    <>
+                                        <h3 className="font-bold text-gray-800 mb-3 text-center">حل نظام المعادلات التالي باستخدام:</h3>
+                                        <p className="text-xl font-bold text-blue-700 mb-4 text-center" dir="ltr">{q.method}</p>
+                                    </>
+                                ) : (
+                                    <h3 className="font-bold text-blue-700 text-xl mb-6 text-center">اوجد محدد المصفوفة بطريقة reduction formula</h3>
+                                )}
+
                                 <div className="flex flex-col items-center justify-center text-xl font-mono overflow-x-auto" dir="ltr">
                                     {q.type === 'system' ? (
                                         <>{q.A.map((row, i) => <p key={i} className="whitespace-nowrap">{formatEq(row[0], row[1], row[2], q.B[i])}</p>)}</>
