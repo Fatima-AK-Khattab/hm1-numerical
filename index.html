@@ -24,7 +24,7 @@
         // ==========================================
         // 🔴 ضعي رابط Google Apps Script الخاص بكِ هنا بين علامتي التنصيص
         // ==========================================
-        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyRzqe18GJ_w9grygBbioKZ_wNAOjznpC4bRZ6nscBkUgk6JvZndcCRo21DPHtjMx2CEQ/exec";
+        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwFP1vGMSH_62jXSAK26HrHHnuF3Es-BWDLnpce_u4xYy03XT7EeQO1y5nEYxc_KcL_Rw/exec";
         
         // ==========================================
 
@@ -97,7 +97,6 @@
             const [errorMsg, setErrorMsg] = useState('');
             const [isSubmitting, setIsSubmitting] = useState(false);
 
-            // ميزة منع فتح الواجب إذا تم تسليمه مسبقاً بمجرد فتح الصفحة
             useEffect(() => {
                 if (localStorage.getItem('hw1_submitted') === 'true') {
                     setView('already_submitted');
@@ -116,7 +115,6 @@
                     return;
                 }
 
-                // منع البدء إذا كان الطالب قد سلم الواجب مسبقاً بنفس الاسم من هذا المتصفح
                 if (localStorage.getItem(`hw1_${sName}_${studentInfo.studyType}`)) {
                     setErrorMsg('لقد قمت بتسليم هذا الواجب مسبقاً لا يسمح بإعادة المحاولة');
                     return;
@@ -194,15 +192,21 @@
                 }
 
                 setIsSubmitting(true);
-                let totalScore = 0; const scores = []; const studentAnswers = [];
+                let totalScore = 0; 
+                const scores = []; 
+                const studentAnswers = [];
+                const correctAnswers = [];
 
                 questions.forEach((q, idx) => {
                     const ans = answers[idx];
                     let score = 0; 
                     let submittedAnswer = "";
+                    let correctAnswer = "";
                     
                     if (q.type === 'system') {
                         submittedAnswer = `x=${ans.x}, y=${ans.y}, z=${ans.z}`;
+                        correctAnswer = `x=${q.X[0]}, y=${q.X[1]}, z=${q.X[2]}`;
+
                         let correctCount = 0;
                         if (parseInt(ans.x) === q.X[0]) correctCount++;
                         if (parseInt(ans.y) === q.X[1]) correctCount++;
@@ -215,6 +219,8 @@
 
                     } else {
                         submittedAnswer = `det=${ans.det}`;
+                        correctAnswer = `det=${q.det}`;
+
                         let studentDet = parseInt(ans.det);
                         let actualDet = q.det;
 
@@ -226,14 +232,19 @@
                     totalScore += score; 
                     scores.push(score); 
                     studentAnswers.push(submittedAnswer);
+                    correctAnswers.push(correctAnswer);
                 });
 
                 try {
                     const response = await fetch(GOOGLE_SCRIPT_URL, {
                         method: 'POST',
                         body: JSON.stringify({
-                            name: studentInfo.name, studyType: studentInfo.studyType,
-                            scores: scores, studentAnswers: studentAnswers, totalScore: totalScore,
+                            name: studentInfo.name, 
+                            studyType: studentInfo.studyType,
+                            scores: scores, 
+                            studentAnswers: studentAnswers, 
+                            correctAnswers: correctAnswers,
+                            totalScore: totalScore,
                             fileBase64: pdfData.base64, 
                             date: new Date().toLocaleString('en-US', { timeZone: 'Asia/Baghdad' })
                         }),
@@ -242,9 +253,8 @@
                     
                     const result = await response.json();
                     if (result.status === 'success') {
-                        // حفظ في المتصفح لمنع الطالب من الدخول مرة أخرى نهائياً
                         localStorage.setItem(`hw1_${studentInfo.name.trim()}_${studentInfo.studyType}`, 'true');
-                        localStorage.setItem('hw1_submitted', 'true'); // قفل عام للمتصفح
+                        localStorage.setItem('hw1_submitted', 'true');
                         setView('success');
                     } else {
                         throw new Error(result.message);
