@@ -88,7 +88,7 @@
         };
 
         function App() {
-            const [view, setView] = useState('login');
+            const [view, setView] = useState('loading'); // نبدأ بالتحميل لفحص الجلسة
             const [studentInfo, setStudentInfo] = useState({ name: '', studyType: 'صباحي' });
             const [questions, setQuestions] = useState([]);
             const [currentQIndex, setCurrentQIndex] = useState(0);
@@ -97,11 +97,45 @@
             const [errorMsg, setErrorMsg] = useState('');
             const [isSubmitting, setIsSubmitting] = useState(false);
 
+            // 1. استرجاع الجلسة السابقة (إذا حدث Refresh للصفحة)
             useEffect(() => {
-                if (localStorage.getItem('hw1_submitted') === 'true') {
+                const isSubmitted = localStorage.getItem('hw1_submitted');
+                if (isSubmitted === 'true') {
                     setView('already_submitted');
+                    return;
                 }
+
+                const savedSession = localStorage.getItem('hw1_current_session');
+                if (savedSession) {
+                    try {
+                        const parsed = JSON.parse(savedSession);
+                        setStudentInfo(parsed.studentInfo);
+                        setQuestions(parsed.questions);
+                        setAnswers(parsed.answers || {});
+                        setCurrentQIndex(parsed.currentQIndex || 0);
+                        setView('quiz'); // إرجاعه مباشرة لسؤال الواجب
+                        return;
+                    } catch (e) {
+                        console.error("خطأ في استرجاع الجلسة", e);
+                    }
+                }
+                
+                // إذا لم يكن هناك جلسة سابقة، أظهر شاشة الدخول
+                setView('login');
             }, []);
+
+            // 2. الحفظ التلقائي في كل مرة يحل فيها الطالب أو ينتقل لسؤال
+            useEffect(() => {
+                if (view === 'quiz' && questions.length > 0) {
+                    const sessionData = {
+                        studentInfo,
+                        questions,
+                        answers,
+                        currentQIndex
+                    };
+                    localStorage.setItem('hw1_current_session', JSON.stringify(sessionData));
+                }
+            }, [view, studentInfo, questions, answers, currentQIndex]);
 
             const handleStart = (e) => {
                 e.preventDefault();
@@ -253,8 +287,11 @@
                     
                     const result = await response.json();
                     if (result.status === 'success') {
+                        // حفظ التسليم في المتصفح
                         localStorage.setItem(`hw1_${studentInfo.name.trim()}_${studentInfo.studyType}`, 'true');
                         localStorage.setItem('hw1_submitted', 'true');
+                        // مسح الجلسة المؤقتة بعد التسليم بنجاح
+                        localStorage.removeItem('hw1_current_session');
                         setView('success');
                     } else {
                         throw new Error(result.message);
@@ -266,6 +303,10 @@
                     setIsSubmitting(false);
                 }
             };
+
+            if (view === 'loading') {
+                return <div className="min-h-screen flex items-center justify-center bg-gray-50"><p className="text-xl font-bold text-gray-600">جاري التحميل...</p></div>;
+            }
 
             if (view === 'already_submitted') {
                 return (
@@ -408,3 +449,6 @@
     </script>
 </body>
 </html>
+
+
+
